@@ -241,7 +241,7 @@ build/
 # ---- 本仓库原有的自定义规则（合并时保留）----
 build/*
 dist/*
-notework.egg-info/*
+funcode.egg-info/*
 
 # ---- AI 编码助手 ----
 # 只忽略本地状态；团队有意共享的 agent / 命令 / 规则定义仍然版本化。
