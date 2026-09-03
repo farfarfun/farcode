@@ -5,15 +5,18 @@
 # @Site    :
 # @File    : data.py
 # @Software: PyCharm
-import os
 import pickle
 import random
 
 import numpy as np
 import pandas as pd
+from farlog import getLogger
+from funshell import run_shell
 from sklearn.preprocessing import StandardScaler
 
 from .download import download_file
+
+logger = getLogger(__name__)
 
 data_root = '/content/tmp/'
 
@@ -85,8 +88,10 @@ class ElectronicsData:
         cmd1 = 'cd ' + path_root + ' && gzip -d reviews_Electronics_5.json.gz'
         cmd2 = 'cd ' + path_root + ' && gzip -d meta_Electronics.json.gz'
 
-        print(os.system(cmd1))
-        print(os.system(cmd2))
+        for cmd in (cmd1, cmd2):
+            code = run_shell(cmd)
+            if code != "0":
+                raise RuntimeError(f"command failed (exit {code}): {cmd}")
 
     def convert_pd_1(self):
         path_root = self.path_root
@@ -134,8 +139,8 @@ class ElectronicsData:
 
         user_count, item_count, cate_count, example_count = \
             len(revi_map), len(asin_map), len(cate_map), reviews_df.shape[0]
-        print('user_count: %d\t item_count: %d\t cate_count: %d\t example_count: %d' %
-              (user_count, item_count, cate_count, example_count))
+        logger.info('user_count: %d\t item_count: %d\t cate_count: %d\t example_count: %d' %
+                    (user_count, item_count, cate_count, example_count))
 
         meta_df = meta_df.sort_values('asin')
         meta_df = meta_df.reset_index(drop=True)

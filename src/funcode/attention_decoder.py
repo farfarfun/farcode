@@ -7,9 +7,12 @@
 # @Software: PyCharm
 
 import tensorflow as tf
+from farlog import getLogger
 from keras import regularizers, constraints, initializers, activations
 from keras.engine import InputSpec
 from keras.layers.recurrent import Recurrent
+
+logger = getLogger(__name__)
 
 tfPrint = lambda d, T: tf.Print(input_=T, data=[T, tf.shape(T)], message=d)
 
@@ -267,7 +270,7 @@ class AttentionDecoder(Recurrent):
         return super(AttentionDecoder, self).call(x, )
 
     def get_initial_state(self, inputs):
-        print('inputs shape:', inputs.get_shape())
+        logger.debug(f"inputs shape: {inputs.get_shape()}")
 
         # apply the matrix on the first time step to get the initial s0.
         s0 = activations.tanh(K.dot(inputs[:, 0], self.W_s))
