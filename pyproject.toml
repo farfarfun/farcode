@@ -1,7 +1,7 @@
 [project]
-name = "funcode"
+name = "farcode"
 version = "0.0.10"
-description = "funcode"
+description = "farfarfun 深度学习与数据处理代码合集"
 readme = "README.md"
 requires-python = ">=3.12"
 license = "MIT"
@@ -19,7 +19,7 @@ dependencies = [
 [project.optional-dependencies]
 # AttentionDecoder.py 依赖已停止维护的旧版独立 keras 包（非 tensorflow.keras），
 # 在现代 TensorFlow/Keras 版本下大概率无法直接运行，故单独拆到 extras 不作为默认依赖。
-legacy-dl = ["tensorflow", "keras"]
+legacy-dl = ["tensorflow>=2.16", "keras>=3.0"]
 
 [dependency-groups]
 dev = ["pytest>=8"]
@@ -29,4 +29,4 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/funcode"]
+packages = ["src/farcode"]
