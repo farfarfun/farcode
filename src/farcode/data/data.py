@@ -191,9 +191,7 @@ class ElectronicsData:
                             f"无法解析 {file_path} 第 {line_number} 行"
                         ) from exc
                     if not isinstance(record, dict):
-                        raise ValueError(
-                            f"{file_path} 第 {line_number} 行必须是对象"
-                        )
+                        raise TypeError(f"{file_path} 第 {line_number} 行必须是对象")
                     missing = required_fields - record.keys()
                     if missing:
                         fields = ", ".join(sorted(missing))

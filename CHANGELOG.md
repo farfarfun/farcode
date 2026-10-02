@@ -25,3 +25,20 @@
 ### 废弃
 
 - `funcode` 名称不再用于本项目；旧名称的兼容转发包不发布。
+
+## [Unreleased] (续，来自 farfarfun/todo-list#656)
+
+### 修复
+
+- `pyproject.toml` 的 `farlog` 依赖下限从 `>=1.1.3` 提升到 `>=1.1.7`，避免解析到过旧版本。
+- `ElectronicsData.convert_pd_1()` 不再用 `eval()` 执行下载内容，改为 `json.loads()` 解析，
+  对旧版 Amazon meta 文件内容回退到 `ast.literal_eval()`；校验记录为对象且包含必需字段，
+  出错时抛出带文件路径和行号的异常。
+- `AttentionDecoder` 类及其 `call()` 方法补齐中文 docstring，说明输入形状、参数、返回值
+  和 `return_probabilities` 行为。
+
+### 新增
+
+- 补充 `farcode.data` 公开 API 的行为测试：下载跳过/失败、数据根目录解析、
+  `get_adult_data` 正常路径、`convert_pd_1` 的 JSON/旧版字面量解析与空文件/
+  非法行/缺字段错误路径。
