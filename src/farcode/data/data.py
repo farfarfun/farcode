@@ -3,6 +3,8 @@
 # @Site    :
 # @File    : data.py
 # @Software: PyCharm
+import ast
+import json
 import os
 import pickle
 import random
@@ -174,20 +176,44 @@ class ElectronicsData:
         """将原始 JSON 行文件转换为供后续处理的 pickle 文件。"""
         path_root = self.path_root
 
-        def to_df(file_path):
-            with open(file_path, "r") as fin:
+        def to_df(file_path: Path, required_fields: set[str]) -> pd.DataFrame:
+            with file_path.open("r", encoding="utf-8") as fin:
                 df = {}
-                for i, line in enumerate(fin):
-                    df[i] = eval(line)
-                df = pd.DataFrame.from_dict(df, orient="index")
-                return df
+                for line_number, line in enumerate(fin, start=1):
+                    try:
+                        try:
+                            record = json.loads(line)
+                        except json.JSONDecodeError:
+                            # Amazon 的旧版 meta 文件名虽为 JSON，内容却是 Python 字面量。
+                            record = ast.literal_eval(line)
+                    except (json.JSONDecodeError, SyntaxError, ValueError) as exc:
+                        raise ValueError(
+                            f"无法解析 {file_path} 第 {line_number} 行"
+                        ) from exc
+                    if not isinstance(record, dict):
+                        raise ValueError(
+                            f"{file_path} 第 {line_number} 行必须是对象"
+                        )
+                    missing = required_fields - record.keys()
+                    if missing:
+                        fields = ", ".join(sorted(missing))
+                        raise ValueError(
+                            f"{file_path} 第 {line_number} 行缺少字段: {fields}"
+                        )
+                    df[line_number - 1] = record
+                if not df:
+                    raise ValueError(f"{file_path} 不包含任何记录")
+                return pd.DataFrame.from_dict(df, orient="index")
 
         (path_root / "raw_data").mkdir(parents=True, exist_ok=True)
-        reviews_df = to_df(path_root / "reviews_Electronics_5.json")
+        reviews_df = to_df(
+            path_root / "reviews_Electronics_5.json",
+            {"reviewerID", "asin", "unixReviewTime"},
+        )
         with open(path_root / "raw_data/reviews.pkl", "wb") as f:
             pickle.dump(reviews_df, f, pickle.HIGHEST_PROTOCOL)
 
-        meta_df = to_df(path_root / "meta_Electronics.json")
+        meta_df = to_df(path_root / "meta_Electronics.json", {"asin", "categories"})
         meta_df = meta_df[meta_df["asin"].isin(reviews_df["asin"].unique())]
         meta_df = meta_df.reset_index(drop=True)
         with open(path_root / "raw_data/meta.pkl", "wb") as f:

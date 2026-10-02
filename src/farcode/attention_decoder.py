@@ -60,6 +60,13 @@ def _time_distributed_dense(
 
 
 class AttentionDecoder(Recurrent):
+    """使用 Bahdanau 注意力将编码序列解码为输出序列。
+
+    输入形状为 ``(batch_size, timesteps, input_dim)``。默认返回形状为
+    ``(batch_size, timesteps, output_dim)`` 的预测序列；当
+    ``return_probabilities=True`` 时返回各解码时间步的注意力概率。
+    """
+
     def __init__(
         self,
         units: int,
@@ -279,6 +286,8 @@ class AttentionDecoder(Recurrent):
         self.built = True
 
     def call(self, x: Any) -> Any:
+        """对三维编码序列执行注意力解码并返回预测或注意力概率。"""
+
         # 保存完整序列，以便在每个时间步计算注意力。
         self.x_seq = x
 
