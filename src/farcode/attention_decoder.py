@@ -1,23 +1,41 @@
-# @Time    : 2019/05/13 15:29
-# @Author  : niuliangtao
-# @Site    :
-# @File    : temp2.py
-# @Software: PyCharm
+"""Bahdanau 注意力解码层, 2019 年的学习代码, **已无法在任何可安装的环境中运行**。
+
+本模块写于 Keras 2.2 + TensorFlow 1.x 时代, 依赖的
+``keras.engine.InputSpec`` 与 ``keras.layers.recurrent.Recurrent``
+在 Keras 2.4 起就被删除了, Keras 3 更没有 ``keras.engine`` 这个子包。
+而能提供这两个符号的最后一批 Keras (2.2.x / 2.3.x, 配 TensorFlow 1.15)
+只支持到 Python 3.7, 与本项目的 ``requires-python = ">=3.12"`` 没有交集。
+
+因此本模块**不是** ``farcode`` 的公开 API, 仅作为算法实现的历史参考保留:
+``import farcode`` 不会导入它, 直接导入它会得到一条说明现状的 ``ImportError``。
+需要注意力解码层请改用 ``keras.layers.MultiHeadAttention`` 或
+``keras.layers.RNN`` + 自定义 Cell 重新实现。
+
+参考: Bahdanau et al. 2014, *Neural Machine Translation by Jointly
+Learning to Align and Translate*。
+"""
 
 from typing import Any
 
-import tensorflow as tf
 from farlog import getLogger
-from keras import activations, constraints, initializers, regularizers
-from keras.engine import InputSpec
-from keras.layers.recurrent import Recurrent
+
+try:
+    import keras.backend as K
+    from keras import activations, constraints, initializers, regularizers
+    from keras.engine import InputSpec
+    from keras.layers.recurrent import Recurrent
+except ImportError as error:  # pragma: no cover - 现代环境下必然走到这里
+    raise ImportError(
+        "farcode.attention_decoder 依赖 Keras 2.2/2.3 的 keras.engine.InputSpec 与 "
+        "keras.layers.recurrent.Recurrent, 这两个符号自 Keras 2.4 起已被删除, Keras 3 "
+        "连 keras.engine 子包都没有; 而最后提供它们的 Keras 2.2.x/2.3.x + TensorFlow 1.15 "
+        "只支持到 Python 3.7, 和本项目的 requires-python >= 3.12 没有交集 —— 也就是说"
+        "现在没有任何可安装的依赖组合能让本模块跑起来。本模块只作为算法实现的历史参考保留, "
+        "不是 farcode 的公开 API。需要注意力机制请改用 keras.layers.MultiHeadAttention, "
+        "或用 keras.layers.RNN + 自定义 Cell 按 Keras 3 的接口重写。"
+    ) from error
 
 logger = getLogger(__name__)
-
-tfPrint = lambda d, T: tf.Print(input_=T, data=[T, tf.shape(T)], message=d)
-
-"""实现时间维度上的稠密层，改编自 Keras 后端。"""
-import keras.backend as K
 
 
 def _time_distributed_dense(
@@ -398,10 +416,9 @@ class AttentionDecoder(Recurrent):
         return dict(list(base_config.items()) + list(config.items()))
 
 
-# 简单构建检查。
+# 简单构建检查（同样只在上述历史环境下可运行）。
 if __name__ == "__main__":
-    from keras.layers import LSTM, Input
-    from keras.layers.wrappers import Bidirectional
+    from keras.layers import LSTM, Bidirectional, Input
     from keras.models import Model
 
     i = Input(shape=(100, 104), dtype="float32")

@@ -16,10 +16,13 @@ dependencies = [
     "farlog>=1.1.7",
 ]
 
-[project.optional-dependencies]
-# AttentionDecoder.py 依赖已停止维护的旧版独立 keras 包（非 tensorflow.keras），
-# 在现代 TensorFlow/Keras 版本下大概率无法直接运行，故单独拆到 extras 不作为默认依赖。
-legacy-dl = ["tensorflow>=2.16", "keras>=3.0"]
+# 这里曾有一个 legacy-dl = ["tensorflow>=2.16", "keras>=3.0"] extra，声称给
+# attention_decoder.py 用。它装不出能跑的环境：该模块要的是 keras.engine.InputSpec
+# 和 keras.layers.recurrent.Recurrent，二者自 Keras 2.4 起已删除，Keras 3 连
+# keras.engine 子包都没有；而最后提供它们的 Keras 2.2.x/2.3.x + TensorFlow 1.15 只
+# 支持到 Python 3.7，与 requires-python >= 3.12 没有交集。留着等于用 keras>=3.0
+# 伪装兼容，故删除。attention_decoder.py 现在只是历史参考代码，导入时会抛出一条
+# 说明现状的 ImportError，不属于 farcode 的公开 API。
 
 [dependency-groups]
 dev = ["pytest>=8"]

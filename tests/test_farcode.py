@@ -1,10 +1,10 @@
+import importlib
 import pickle
+import sys
 from pathlib import Path
 
 import pytest
 
-# farcode.attention_decoder 依赖未声明为默认依赖的旧版 tensorflow/keras
-# （见 pyproject.toml 的 legacy-dl extra），默认环境下不保证可导入，故不在此测试。
 import farcode
 from farcode.data.data import ElectronicsData, get_adult_data
 from farcode.data.download import download_file
@@ -12,6 +12,37 @@ from farcode.data.download import download_file
 
 def test_import_farcode():
     assert farcode is not None
+
+
+def test_import_farcode_does_not_pull_in_legacy_attention_decoder():
+    """`import farcode` 不能连带导入跑不起来的历史模块。
+
+    否则只要装了某个版本的 keras，整个包的导入都会被它拖垮。
+    """
+    assert "farcode.attention_decoder" not in sys.modules
+
+
+def test_attention_decoder_import_error_is_actionable():
+    """直接导入历史模块时，错误必须说清为什么、以及该用什么替代。
+
+    `attention_decoder` 要的 `keras.engine.InputSpec` 与
+    `keras.layers.recurrent.Recurrent` 自 Keras 2.4 起已删除，而提供它们的
+    Keras 2.2/2.3 + TF 1.15 只支持到 Python 3.7，和本项目的
+    `requires-python >= 3.12` 没有交集——没有任何可安装的组合能让它跑起来。
+    这里锁住的是「失败时给人看的那条信息」，而不是一句裸的
+    `No module named 'keras.engine'`。
+    """
+    sys.modules.pop("farcode.attention_decoder", None)
+
+    with pytest.raises(ImportError) as exc_info:
+        importlib.import_module("farcode.attention_decoder")
+
+    message = str(exc_info.value)
+    assert "keras.engine" in message
+    assert "requires-python" in message
+    assert "MultiHeadAttention" in message
+    # 必须是模块自己抛的说明性 ImportError，不是 import 机制的裸 ModuleNotFoundError。
+    assert not isinstance(exc_info.value, ModuleNotFoundError)
 
 
 def test_data_module_public_api_importable():
