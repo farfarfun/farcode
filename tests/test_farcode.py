@@ -1,5 +1,6 @@
+import gzip
 import importlib
-import pickle
+import json
 import sys
 from pathlib import Path
 
@@ -121,12 +122,70 @@ def test_convert_pd_parses_json_and_legacy_literal(tmp_path):
 
     data.convert_pd_1()
 
-    with (data.path_root / "raw_data/reviews.pkl").open("rb") as file:
-        reviews = pickle.load(file)
-    with (data.path_root / "raw_data/meta.pkl").open("rb") as file:
-        metadata = pickle.load(file)
-    assert reviews.loc[0, "reviewerID"] == "u1"
-    assert metadata.loc[0, "categories"] == [["Electronics"]]
+    reviews = json.loads((data.path_root / "raw_data/reviews.json").read_text())
+    metadata = json.loads((data.path_root / "raw_data/meta.json").read_text())
+    assert reviews["data"][0]["reviewerID"] == "u1"
+    assert metadata["data"][0]["categories"] == [["Electronics"]]
+
+
+def test_init_data_and_build_dataset_without_network(tmp_path, monkeypatch):
+    data = ElectronicsData(tmp_path)
+    reviews = (
+        '{"reviewerID": "u1", "asin": "a1", "unixReviewTime": 1}\n'
+        '{"reviewerID": "u1", "asin": "a2", "unixReviewTime": 2}\n'
+        '{"reviewerID": "u2", "asin": "a2", "unixReviewTime": 1}\n'
+        '{"reviewerID": "u2", "asin": "a3", "unixReviewTime": 2}'
+    )
+    metadata = (
+        "{'asin': 'a1', 'categories': [['c1']]}\n"
+        "{'asin': 'a2', 'categories': [['c2']]}\n"
+        "{'asin': 'a3', 'categories': [['c3']]}"
+    )
+
+    def write_gzip_fixture(*, url, path):
+        content = metadata if "meta_" in url else reviews
+        with gzip.open(path, "wt", encoding="utf-8") as destination:
+            destination.write(content + "\n")
+
+    monkeypatch.setattr("farcode.data.data.download_file", write_gzip_fixture)
+    data.init_data()
+    data.build_dataset()
+
+    remap = json.loads((data.path_root / "raw_data/remap.json").read_text())
+    dataset = json.loads((data.path_root / "raw_data/dataset.json").read_text())
+    assert remap["counts"] == [2, 3, 3, 4]
+    assert dataset["counts"] == [2, 3, 3]
+    assert dataset["train"] == []
+    assert len(dataset["test"]) == 2
+
+
+def test_build_dataset_rejects_user_without_negative_item(tmp_path):
+    data = ElectronicsData(tmp_path)
+    raw_data = data.path_root / "raw_data"
+    raw_data.mkdir(parents=True)
+    (raw_data / "remap.json").write_text(
+        '{"reviews": [{"reviewerID": 0, "asin": 0}, '
+        '{"reviewerID": 0, "asin": 1}], "categories": [0, 0], '
+        '"counts": [1, 2, 1, 2]}'
+    )
+
+    with pytest.raises(ValueError, match="no negative item available"):
+        data.build_dataset()
+
+
+def test_build_dataset_skips_single_interaction_user(tmp_path):
+    data = ElectronicsData(tmp_path)
+    raw_data = data.path_root / "raw_data"
+    raw_data.mkdir(parents=True)
+    (raw_data / "remap.json").write_text(
+        '{"reviews": [{"reviewerID": 0, "asin": 0}], '
+        '"categories": [0, 0], "counts": [1, 2, 1, 1]}'
+    )
+
+    data.build_dataset()
+
+    dataset = json.loads((raw_data / "dataset.json").read_text())
+    assert dataset["counts"] == [0, 2, 1]
 
 
 @pytest.mark.parametrize(
