@@ -4,17 +4,17 @@
 # @File    : data.py
 # @Software: PyCharm
 import ast
+import gzip
 import json
 import os
-import pickle
 import random
+import shutil
 import tomllib
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 from farlog import getLogger
-from funshell import run_shell
 from sklearn.preprocessing import StandardScaler
 
 from .download import download_file
@@ -164,16 +164,16 @@ class ElectronicsData:
             path=str(path2),
         )
 
-        cmd1 = f'cd "{path_root}" && gzip -d reviews_Electronics_5.json.gz'
-        cmd2 = f'cd "{path_root}" && gzip -d meta_Electronics.json.gz'
-
-        for cmd in (cmd1, cmd2):
-            code = run_shell(cmd)
-            if code != "0":
-                raise RuntimeError(f"command failed (exit {code}): {cmd}")
+        for compressed_path in (path1, path2):
+            output_path = compressed_path.with_suffix("")
+            with (
+                gzip.open(compressed_path, "rb") as source,
+                output_path.open("wb") as destination,
+            ):
+                shutil.copyfileobj(source, destination)
 
     def convert_pd_1(self) -> None:
-        """将原始 JSON 行文件转换为供后续处理的 pickle 文件。"""
+        """将原始 JSON 行文件转换为供后续处理的 JSON 文件。"""
         path_root = self.path_root
 
         def to_df(file_path: Path, required_fields: set[str]) -> pd.DataFrame:
@@ -208,26 +208,26 @@ class ElectronicsData:
             path_root / "reviews_Electronics_5.json",
             {"reviewerID", "asin", "unixReviewTime"},
         )
-        with open(path_root / "raw_data/reviews.pkl", "wb") as f:
-            pickle.dump(reviews_df, f, pickle.HIGHEST_PROTOCOL)
+        reviews_df.to_json(
+            path_root / "raw_data/reviews.json", orient="table", index=False
+        )
 
         meta_df = to_df(path_root / "meta_Electronics.json", {"asin", "categories"})
         meta_df = meta_df[meta_df["asin"].isin(reviews_df["asin"].unique())]
         meta_df = meta_df.reset_index(drop=True)
-        with open(path_root / "raw_data/meta.pkl", "wb") as f:
-            pickle.dump(meta_df, f, pickle.HIGHEST_PROTOCOL)
+        meta_df.to_json(path_root / "raw_data/meta.json", orient="table", index=False)
 
     def remap_id_2(self) -> None:
         """将用户、商品和类目标识映射为连续整数并保存。"""
         random.seed(1234)
 
-        with open(self.path_root / "raw_data/reviews.pkl", "rb") as f:
-            reviews_df = pickle.load(f)
-            reviews_df = reviews_df[["reviewerID", "asin", "unixReviewTime"]]
-        with open(self.path_root / "raw_data/meta.pkl", "rb") as f:
-            meta_df = pickle.load(f)
-            meta_df = meta_df[["asin", "categories"]]
-            meta_df["categories"] = meta_df["categories"].map(lambda x: x[-1][-1])
+        reviews_df = pd.read_json(
+            self.path_root / "raw_data/reviews.json", orient="table"
+        )[["reviewerID", "asin", "unixReviewTime"]]
+        meta_df = pd.read_json(self.path_root / "raw_data/meta.json", orient="table")[
+            ["asin", "categories"]
+        ]
+        meta_df["categories"] = meta_df["categories"].map(lambda x: x[-1][-1])
 
         def build_map(df, col_name):
             key = sorted(df[col_name].unique().tolist())
@@ -260,15 +260,14 @@ class ElectronicsData:
         cate_list = [meta_df["categories"][i] for i in range(len(asin_map))]
         cate_list = np.array(cate_list, dtype=np.int32)
 
-        with open(self.path_root / "raw_data/remap.pkl", "wb") as f:
-            pickle.dump(reviews_df, f, pickle.HIGHEST_PROTOCOL)  # uid, iid
-            pickle.dump(cate_list, f, pickle.HIGHEST_PROTOCOL)  # cid of iid line
-            pickle.dump(
-                (user_count, item_count, cate_count, example_count),
-                f,
-                pickle.HIGHEST_PROTOCOL,
-            )
-            pickle.dump((asin_key, cate_key, revi_key), f, pickle.HIGHEST_PROTOCOL)
+        remap_data = {
+            "reviews": reviews_df.to_dict(orient="records"),
+            "categories": cate_list.tolist(),
+            "counts": [user_count, item_count, cate_count, example_count],
+            "keys": [asin_key, cate_key, revi_key],
+        }
+        with (self.path_root / "raw_data/remap.json").open("w", encoding="utf-8") as f:
+            json.dump(remap_data, f)
 
     def init_data(self) -> None:
         """执行下载、转换和标识映射的完整初始化流程。"""
@@ -283,23 +282,24 @@ class ElectronicsData:
         path_root = self.path_root
         random.seed(1234)
 
-        with open(path_root / "raw_data/remap.pkl", "rb") as f:
-            reviews_df = pickle.load(f)
-            cate_list = pickle.load(f)
-            user_count, item_count, cate_count, _example_count = pickle.load(f)
+        with (path_root / "raw_data/remap.json").open(encoding="utf-8") as f:
+            remap_data = json.load(f)
+        reviews_df = pd.DataFrame(remap_data["reviews"])
+        cate_list = remap_data["categories"]
+        _user_count, item_count, cate_count, _example_count = remap_data["counts"]
 
         train_set = []
         test_set = []
         for reviewerID, hist in reviews_df.groupby("reviewerID"):
             pos_list = hist["asin"].tolist()
+            if len(pos_list) < 2:
+                logger.warning(f"skipping {reviewerID}: fewer than two interactions")
+                continue
+            available_items = list(set(range(item_count)) - set(pos_list))
+            if not available_items:
+                raise ValueError(f"no negative item available for user {reviewerID}")
 
-            def gen_neg(items: list[int] = pos_list) -> int:
-                neg = items[0]
-                while neg in items:
-                    neg = random.randint(0, item_count - 1)
-                return neg
-
-            neg_list = [gen_neg() for i in range(len(pos_list))]
+            neg_list = [random.choice(available_items) for _ in range(len(pos_list))]
 
             for i in range(1, len(pos_list)):
                 hist = pos_list[:i]
@@ -313,13 +313,11 @@ class ElectronicsData:
         random.shuffle(train_set)
         random.shuffle(test_set)
 
-        assert len(test_set) == user_count
-        # assert(len(test_set) + len(train_set) // 2 == reviews_df.shape[0])
-
-        with open(path_root / "raw_data/dataset.pkl", "wb") as f:
-            pickle.dump(train_set, f, pickle.HIGHEST_PROTOCOL)
-            pickle.dump(test_set, f, pickle.HIGHEST_PROTOCOL)
-            pickle.dump(cate_list, f, pickle.HIGHEST_PROTOCOL)
-            pickle.dump(
-                (user_count, item_count, cate_count), f, pickle.HIGHEST_PROTOCOL
-            )
+        dataset_data = {
+            "train": train_set,
+            "test": test_set,
+            "categories": cate_list,
+            "counts": [len(test_set), item_count, cate_count],
+        }
+        with (path_root / "raw_data/dataset.json").open("w", encoding="utf-8") as f:
+            json.dump(dataset_data, f)
